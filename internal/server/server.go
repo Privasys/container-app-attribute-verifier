@@ -198,8 +198,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /attest", s.gated(s.attest))
 	mux.HandleFunc("POST /mail/start", s.gated(s.mailStart))
 	mux.HandleFunc("POST /disclose", s.gated(s.disclose))
+	// Reads answer POST too: the platform's RPC proxy invokes every tool as POST.
 	mux.HandleFunc("GET /evidence/keys/{source}/{kid}", s.gated(s.evidenceKey))
+	mux.HandleFunc("POST /evidence/keys/{source}/{kid}", s.gated(s.evidenceKey))
 	mux.HandleFunc("GET /ledger/root", s.gated(s.ledgerRoot))
+	mux.HandleFunc("POST /ledger/root", s.gated(s.ledgerRoot))
 	mux.HandleFunc("POST /status", s.gated(s.status))
 	mux.HandleFunc("GET /status", s.gated(s.status))
 	return mux
