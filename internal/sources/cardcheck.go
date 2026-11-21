@@ -55,7 +55,7 @@ type verifyAnswer struct {
 	Checks        map[string]string `json:"checks"`
 	CardBrand     *string           `json:"card_brand"`
 	CardCountry   *string           `json:"card_country"`
-	CheckedAt     int64             `json:"checked_at"`
+	CheckedAt     json.RawMessage   `json:"checked_at"`
 	HolderBinding string            `json:"holder_binding"`
 	Error         string            `json:"error"`
 }
@@ -82,6 +82,12 @@ func (cc *CardChecks) Check(ctx context.Context, m CardMaterial, commitment stri
 	}
 	if status != http.StatusOK {
 		return nil, fmt.Errorf("card check: the back office answered %d", status)
+	}
+	checkedAt, ok := parseCheckedAt(a.CheckedAt)
+	if !ok {
+		// The proof must carry when the bank checked the address; without it
+		// nothing is signed rather than a proof dated at the epoch.
+		return nil, errors.New("card check: the back office gave no check time")
 	}
 	if !a.Match {
 		return nil, errors.New("card check: the address is not the one checked")
@@ -119,13 +125,13 @@ func (cc *CardChecks) Check(ctx context.Context, m CardMaterial, commitment stri
 	}
 	return &Result{Source: "card_bank", Method: "proven",
 		Values:     []Value{{Attr: "address", Value: value}},
-		MaterialAt: time.Unix(a.CheckedAt, 0),
+		MaterialAt: checkedAt,
 		Label:      label,
 		Evidence: map[string]any{
 			"kind":       "card_check",
 			"check_id":   m.CheckID,
 			"checks":     checks,
-			"checked_at": a.CheckedAt,
+			"checked_at": checkedAt.Unix(),
 		}}, nil
 }
 
@@ -171,4 +177,19 @@ func (cc *CardChecks) post(ctx context.Context, path string, body, into any) (in
 		_ = json.Unmarshal(answer, into)
 	}
 	return resp.StatusCode, nil
+}
+
+// parseCheckedAt reads the check time as an RFC 3339 string (what the back
+// office sends) or Unix seconds. A missing or zero time is not a time.
+func parseCheckedAt(raw json.RawMessage) (time.Time, bool) {
+	var str string
+	if json.Unmarshal(raw, &str) == nil && str != "" {
+		t, err := time.Parse(time.RFC3339, str)
+		return t, err == nil && t.Unix() > 0
+	}
+	var n int64
+	if json.Unmarshal(raw, &n) == nil && n > 0 {
+		return time.Unix(n, 0), true
+	}
+	return time.Time{}, false
 }

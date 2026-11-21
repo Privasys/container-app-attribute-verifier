@@ -397,7 +397,7 @@ func TestCardCheckSignsOnlyPassedFields(t *testing.T) {
 	w := newWallet(t, h.wp)
 	visa, gb := "visa", "GB"
 	h.officeAnswer = map[string]any{"match": true, "checks": map[string]string{"line1": "fail", "postal_code": "pass"},
-		"card_brand": visa, "card_country": gb, "checked_at": 1763700000, "holder_binding": w.commitment()}
+		"card_brand": visa, "card_country": gb, "checked_at": "2025-11-21T05:20:00Z", "holder_binding": w.commitment()}
 	out := h.attest(w, "card_check", map[string]any{"check_id": "chk1", "line1": "1 High St", "postal_code": "SW1A 1AA", "country": "GB"}, 200)
 	p := proofsOf(t, out)["address"]
 	val := p["value"].(map[string]any)
@@ -408,7 +408,7 @@ func TestCardCheckSignsOnlyPassedFields(t *testing.T) {
 		t.Fatalf("label: %v", p)
 	}
 	pr, _ := proof.Verify(h.srv.o.Signer, p["proof"].(string))
-	if pr.MaterialAt != 1763700000 {
+	if pr.MaterialAt != 1763702400 {
 		t.Fatal("the proof does not carry the original check time")
 	}
 	if len(h.statements) != 1 {
@@ -563,4 +563,19 @@ func TestMailStartWithoutDeviceSignature(t *testing.T) {
 	msg, _ = MailStartMessage("erin2@example.com", ch)
 	hb, _ = w.sign(t, msg)
 	h.post("/mail/start", map[string]any{"email": "erin2@example.com", "holder": hb, "challenge": ch}, 401)
+}
+
+// A check without a usable time signs nothing: never a proof dated 1970.
+func TestCardCheckWithoutTimeSignsNothing(t *testing.T) {
+	h := newHarness(t)
+	w := newWallet(t, h.wp)
+	h.officeAnswer = map[string]any{"match": true, "checks": map[string]string{"postal_code": "pass"},
+		"holder_binding": w.commitment()}
+	h.attest(w, "card_check", map[string]any{"check_id": "c2", "line1": "1 High St", "postal_code": "SW1A 1AA"}, 422)
+	h.officeAnswer["checked_at"] = 1763700000
+	out := h.attest(w, "card_check", map[string]any{"check_id": "c2", "line1": "1 High St", "postal_code": "SW1A 1AA"}, 200)
+	pr, _ := proof.Verify(h.srv.o.Signer, proofsOf(t, out)["address"]["proof"].(string))
+	if pr.MaterialAt != 1763700000 {
+		t.Fatal("Unix-seconds check time not read")
+	}
 }
