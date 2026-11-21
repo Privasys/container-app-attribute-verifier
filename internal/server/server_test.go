@@ -544,3 +544,23 @@ func TestMicrosoftRule(t *testing.T) {
 	h.attest(w, "oidc_id_token", map[string]any{"provider": "microsoft", "id_token": tok(w, map[string]any{"oid": ""})}, 422)
 	h.attest(w, "oidc_id_token", map[string]any{"provider": "microsoft", "id_token": tok(w, map[string]any{"tid": "other-tenant"})}, 422)
 }
+
+// Asking for a code needs no device signature (no biometric prompt); the
+// WIA alone names the device. Redeeming still needs the device key.
+func TestMailStartWithoutDeviceSignature(t *testing.T) {
+	h := newHarness(t)
+	w := newWallet(t, h.wp)
+	ch := h.challenge()
+	msg, _ := MailStartMessage("erin@example.com", ch)
+	hb, _ := w.sign(t, msg)
+	start := h.post("/mail/start", map[string]any{"email": "erin@example.com", "holder": hb, "wia": w.wia, "challenge": ch}, 200)
+	ok := h.attest(w, "mail_code", map[string]any{"email": "erin@example.com", "code": h.mail.code, "mail_token": start["mail_token"]}, 200)
+	if proofsOf(t, ok)["email"]["value"] != "erin@example.com" {
+		t.Fatal("no proof")
+	}
+	// Without a WIA, refused.
+	ch = h.challenge()
+	msg, _ = MailStartMessage("erin2@example.com", ch)
+	hb, _ = w.sign(t, msg)
+	h.post("/mail/start", map[string]any{"email": "erin2@example.com", "holder": hb, "challenge": ch}, 401)
+}

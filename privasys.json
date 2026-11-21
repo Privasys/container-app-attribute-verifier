@@ -1,5 +1,8 @@
 {
-  "config_api": { "method": "POST", "path": "/configure" },
+  "config_api": {
+    "method": "POST",
+    "path": "/configure"
+  },
   "configure": {
     "name": "configure",
     "title": "Load wallet-provider keys, providers, mail sender and back office",
@@ -19,7 +22,9 @@
         "mail": {
           "type": "object",
           "description": "The Microsoft Graph sender for verification codes: {tenant_id, client_id, client_secret, sender}. The secret stays on the sealed volume and is excluded from the attested digest.",
-          "x-privasys": { "label": "Mail sender (Microsoft Graph)" }
+          "x-privasys": {
+            "label": "Mail sender (Microsoft Graph)"
+          }
         },
         "card_check": {
           "type": "object",
@@ -38,10 +43,18 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "wallet_provider_jwks": { "type": "object" },
-          "providers": { "type": "object" },
-          "mail": { "type": "object" },
-          "card_check": { "type": "object" }
+          "wallet_provider_jwks": {
+            "type": "object"
+          },
+          "providers": {
+            "type": "object"
+          },
+          "mail": {
+            "type": "object"
+          },
+          "card_check": {
+            "type": "object"
+          }
         }
       }
     },
@@ -50,7 +63,10 @@
       "title": "Fresh challenge",
       "endpoint": "/challenge",
       "description": "Returns {challenge, expires_at}: a single-use token, valid two minutes, that every attest and mail_start call must sign.",
-      "inputSchema": { "type": "object", "properties": {} }
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
     },
     {
       "name": "attest",
@@ -59,14 +75,42 @@
       "description": "Wallet only. Checks one piece of raw material against the verifier's trust anchors and returns {proofs: [{attr, value, method, source, label, proof}]}. Kinds: oidc_id_token {provider, id_token, reattest?}; github {access_token}; mail_code {email, code, mail_token}; card_check {check_id, line1, postal_code, country}; proof {proof} (rebind a proof to the calling device). The holder key and the device key both sign canonical JSON {op: \"attest\", kind, material: base64url(SHA-256(canonical material)), challenge}; a WIA bound to the device key is required.",
       "inputSchema": {
         "type": "object",
-        "required": ["kind", "material", "holder", "device", "wia", "challenge"],
+        "required": [
+          "kind",
+          "material",
+          "holder",
+          "device",
+          "wia",
+          "challenge"
+        ],
         "properties": {
-          "kind": { "type": "string", "enum": ["oidc_id_token", "github", "mail_code", "card_check", "proof"] },
-          "material": { "type": "object" },
-          "holder": { "type": "object", "description": "{hk_pub, salt, sig}, base64url: SEC1 holder key, 16-byte salt, raw ES256 signature." },
-          "device": { "type": "object", "description": "{pub, sig}, base64url: SEC1 device key, raw ES256 signature." },
-          "wia": { "type": "string" },
-          "challenge": { "type": "string" }
+          "kind": {
+            "type": "string",
+            "enum": [
+              "oidc_id_token",
+              "github",
+              "mail_code",
+              "card_check",
+              "proof"
+            ]
+          },
+          "material": {
+            "type": "object"
+          },
+          "holder": {
+            "type": "object",
+            "description": "{hk_pub, salt, sig}, base64url: SEC1 holder key, 16-byte salt, raw ES256 signature."
+          },
+          "device": {
+            "type": "object",
+            "description": "{pub, sig}, base64url: SEC1 device key, raw ES256 signature."
+          },
+          "wia": {
+            "type": "string"
+          },
+          "challenge": {
+            "type": "string"
+          }
         }
       }
     },
@@ -74,16 +118,31 @@
       "name": "mail_start",
       "title": "Mail a verification code",
       "endpoint": "/mail/start",
-      "description": "Wallet only. Mails a six-digit code to the address and returns {mail_token, expires_at}. Both keys sign canonical JSON {op: \"mail_start\", email, challenge}. Redeem with attest kind mail_code.",
+      "description": "Wallet only. Mails a six-digit code to the address and returns {mail_token, expires_at}. The holder key signs canonical JSON {op: \"mail_start\", email, challenge}; a WIA is required. No device signature is needed (asking for a code binds nothing to the device; the device key signs at redemption, attest kind mail_code), though one is accepted. Redeem with attest kind mail_code.",
       "inputSchema": {
         "type": "object",
-        "required": ["email", "holder", "device", "wia", "challenge"],
+        "required": [
+          "email",
+          "holder",
+          "wia",
+          "challenge"
+        ],
         "properties": {
-          "email": { "type": "string" },
-          "holder": { "type": "object" },
-          "device": { "type": "object" },
-          "wia": { "type": "string" },
-          "challenge": { "type": "string" }
+          "email": {
+            "type": "string"
+          },
+          "holder": {
+            "type": "object"
+          },
+          "device": {
+            "type": "object"
+          },
+          "wia": {
+            "type": "string"
+          },
+          "challenge": {
+            "type": "string"
+          }
         }
       }
     },
@@ -94,15 +153,37 @@
       "description": "Wallet only. Returns {token}: a short-lived SD-JWT VC of one proof, addressed to rp_id and bound to the device key. The device key signs canonical JSON {op: \"disclose\", proof: <proof jti>, rp_id, sub, nonce, ts}.",
       "inputSchema": {
         "type": "object",
-        "required": ["proof", "rp_id", "sub", "nonce", "ts", "device", "wia"],
+        "required": [
+          "proof",
+          "rp_id",
+          "sub",
+          "nonce",
+          "ts",
+          "device",
+          "wia"
+        ],
         "properties": {
-          "proof": { "type": "string" },
-          "rp_id": { "type": "string" },
-          "sub": { "type": "string" },
-          "nonce": { "type": "string" },
-          "ts": { "type": "integer" },
-          "device": { "type": "object" },
-          "wia": { "type": "string" }
+          "proof": {
+            "type": "string"
+          },
+          "rp_id": {
+            "type": "string"
+          },
+          "sub": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": "string"
+          },
+          "ts": {
+            "type": "integer"
+          },
+          "device": {
+            "type": "object"
+          },
+          "wia": {
+            "type": "string"
+          }
         }
       }
     },
@@ -112,7 +193,10 @@
       "title": "Status",
       "endpoint": "/status",
       "description": "Providers configured, whether mail and card checks are available, whether WIA is enforced, and the provider-key ledger's root.",
-      "inputSchema": { "type": "object", "properties": {} }
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
     }
   ]
 }

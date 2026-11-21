@@ -55,12 +55,27 @@ type claims struct {
 
 // Verify checks token against the JWKS and that it binds device.
 func Verify(j JWKS, token string, device *ecdsa.PublicKey, now time.Time) error {
+	cnf, err := Device(j, token, now)
+	if err != nil {
+		return err
+	}
+	if !jose.SameECKey(cnf, jose.ECJWK(device)) {
+		return errors.New("wia: cnf.jwk is not the device key that signed the request")
+	}
+	return nil
+}
+
+// Device checks token against the JWKS and returns the device key it names,
+// without proof that the caller holds that key. Used only where the call
+// itself creates nothing bound to the device (asking for a mail code), so a
+// biometric prompt for the hardware key is not worth it there.
+func Device(j JWKS, token string, now time.Time) (jose.JWK, error) {
 	if token == "" {
-		return errors.New("a Wallet Instance Attestation is required")
+		return jose.JWK{}, errors.New("a Wallet Instance Attestation is required")
 	}
 	p, err := jose.Parse(token)
 	if err != nil {
-		return fmt.Errorf("wia: %w", err)
+		return jose.JWK{}, fmt.Errorf("wia: %w", err)
 	}
 	var key *jose.JWK
 	for i := range j.Keys {
@@ -72,25 +87,25 @@ func Verify(j JWKS, token string, device *ecdsa.PublicKey, now time.Time) error 
 		}
 	}
 	if key == nil {
-		return errors.New("wia: no wallet-provider key matches")
+		return jose.JWK{}, errors.New("wia: no wallet-provider key matches")
 	}
 	pub, err := key.Public()
 	if err != nil {
-		return err
+		return jose.JWK{}, err
 	}
 	if err := p.Verify(pub); err != nil {
-		return fmt.Errorf("wia: %w", err)
+		return jose.JWK{}, fmt.Errorf("wia: %w", err)
 	}
 	var c claims
 	if err := p.Claims(&c); err != nil {
-		return errors.New("wia: unreadable claims")
+		return jose.JWK{}, errors.New("wia: unreadable claims")
 	}
 	exp, err := c.Exp.Int64()
 	if err != nil || exp < now.Unix() {
-		return errors.New("wia: expired or without exp")
+		return jose.JWK{}, errors.New("wia: expired or without exp")
 	}
-	if !jose.SameECKey(c.Cnf.JWK, jose.ECJWK(device)) {
-		return errors.New("wia: cnf.jwk is not the device key that signed the request")
+	if _, err := c.Cnf.JWK.Public(); err != nil {
+		return jose.JWK{}, errors.New("wia: cnf.jwk is not a usable key")
 	}
-	return nil
+	return c.Cnf.JWK, nil
 }

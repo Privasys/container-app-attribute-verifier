@@ -82,6 +82,25 @@ func CheckBoth(h *Holder, d *Device, msg []byte) (*Checked, error) {
 	if h == nil || d == nil {
 		return nil, errors.New("holder and device signatures are required")
 	}
+	hc, err := CheckHolder(h, msg)
+	if err != nil {
+		return nil, err
+	}
+	c, err := CheckDevice(d, msg)
+	if err != nil {
+		return nil, err
+	}
+	c.HKPub, c.Salt, c.Commitment = hc.HKPub, hc.Salt, hc.Commitment
+	return c, nil
+}
+
+// CheckHolder verifies the holder-key signature alone. The holder key lives
+// in software (derived from the seed), so signing with it needs no biometric;
+// it proves which holder, not which device.
+func CheckHolder(h *Holder, msg []byte) (*Checked, error) {
+	if h == nil {
+		return nil, errors.New("a holder signature is required")
+	}
 	hkRaw, err := jose.UnB64(h.HKPub)
 	if err != nil {
 		return nil, errors.New("holder.hk_pub is not base64url")
@@ -98,12 +117,7 @@ func CheckBoth(h *Holder, d *Device, msg []byte) (*Checked, error) {
 	if err != nil || !jose.VerifyES256Raw(hk, msg, hsig) {
 		return nil, errors.New("the holder signature does not verify")
 	}
-	c, err := CheckDevice(d, msg)
-	if err != nil {
-		return nil, err
-	}
-	c.HKPub, c.Salt, c.Commitment = hkRaw, salt, Commitment(hkRaw, salt)
-	return c, nil
+	return &Checked{HKPub: hkRaw, Salt: salt, Commitment: Commitment(hkRaw, salt)}, nil
 }
 
 // CheckDevice verifies the device signature over msg.

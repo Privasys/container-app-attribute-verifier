@@ -11,6 +11,7 @@ package server
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -319,6 +320,41 @@ func (s *Server) checkWIA(token string, c *holder.Checked) error {
 	return wia.Verify(*jwks, token, c.DevicePub, s.o.Now())
 }
 
+// holderWithWIA checks the holder signature and a WIA without a device
+// signature; the device the WIA names keys the rate limits.
+func (s *Server) holderWithWIA(h *holder.Holder, token string, msg []byte) (*holder.Checked, error) {
+	c, err := holder.CheckHolder(h, msg)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.RLock()
+	jwks := s.cfg.WalletProviderJWKS
+	s.mu.RUnlock()
+	if jwks == nil {
+		if s.o.RequireWIA {
+			return nil, errors.New("no wallet-provider keys configured")
+		}
+		c.Device = "unattested"
+		return c, nil
+	}
+	if token == "" && !s.o.RequireWIA {
+		c.Device = "unattested"
+		return c, nil
+	}
+	dev, err := wia.Device(*jwks, token, s.o.Now())
+	if err != nil {
+		return nil, err
+	}
+	pub, err := dev.Public()
+	if err != nil {
+		return nil, err
+	}
+	if ec, ok := pub.(*ecdsa.PublicKey); ok {
+		c.Device = holder.DeviceBinding(jose.SEC1(ec))
+	}
+	return c, nil
+}
+
 func tooMany(w http.ResponseWriter, wait time.Duration) {
 	w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
 	writeError(w, http.StatusTooManyRequests, "too many requests; try again later")
@@ -541,12 +577,21 @@ func (s *Server) mailStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg, _ := MailStartMessage(req.Email, req.Challenge)
-	checked, err := holder.CheckBoth(req.Holder, req.Device, msg)
-	if err != nil {
-		writeError(w, 401, err.Error())
-		return
+	// Asking for a code binds nothing to the device, so the hardware key
+	// (and the biometric prompt it costs) is not needed here: the holder
+	// key and the Wallet Instance Attestation are. The device key signs at
+	// redemption, where the proof is bound to it. A device signature is
+	// still accepted when sent.
+	var checked *holder.Checked
+	var err error
+	if req.Device != nil {
+		if checked, err = holder.CheckBoth(req.Holder, req.Device, msg); err == nil {
+			err = s.checkWIA(req.WIA, checked)
+		}
+	} else {
+		checked, err = s.holderWithWIA(req.Holder, req.WIA, msg)
 	}
-	if err := s.checkWIA(req.WIA, checked); err != nil {
+	if err != nil {
 		writeError(w, 401, err.Error())
 		return
 	}
