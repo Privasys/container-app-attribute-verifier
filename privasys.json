@@ -1,0 +1,118 @@
+{
+  "config_api": { "method": "POST", "path": "/configure" },
+  "configure": {
+    "name": "configure",
+    "title": "Load wallet-provider keys, providers, mail sender and back office",
+    "endpoint": "/configure",
+    "description": "Provision what the verifier trusts and whom it talks to, then lift the configure-then-freeze gate. Every part is optional on a later call: a part left out keeps its value, so the mail secret need not be resent to change the rest. SHA-256 of the configuration in force, secrets excluded, is attested at OID 1.3.6.1.4.1.65230.5.4.1.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "wallet_provider_jwks": {
+          "type": "object",
+          "description": "The wallet-provider keys (privasys.id's) that sign Wallet Instance Attestations. Required on first configuration: every call that does work must carry a WIA bound to the device key that signs it."
+        },
+        "providers": {
+          "type": "object",
+          "description": "OIDC providers by name. For google, microsoft and linkedin give {audiences: [privasys.id's client ids]} and, for microsoft, optionally {vouching_tenants: [...]}: issuers, key sets and claim rules are built into the measured image. Any other provider is named oidc:<issuer> and fully defined {issuer, jwks_url, audiences, claims, email_rule}. A null value removes a provider."
+        },
+        "mail": {
+          "type": "object",
+          "description": "The Microsoft Graph sender for verification codes: {tenant_id, client_id, client_secret, sender}. The secret stays on the sealed volume and is excluded from the attested digest.",
+          "x-privasys": { "label": "Mail sender (Microsoft Graph)" }
+        },
+        "card_check": {
+          "type": "object",
+          "description": "The Privasys back office that answers about card checks: {base_url}. The verifier authenticates with its attested app identity; nothing is configured for that."
+        }
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "configure",
+      "role": "config",
+      "title": "Load wallet-provider keys, providers, mail sender and back office",
+      "endpoint": "/configure",
+      "description": "See configure. Returns {status: \"configured\", configuration_digest, providers, mail, card_check, ledger}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "wallet_provider_jwks": { "type": "object" },
+          "providers": { "type": "object" },
+          "mail": { "type": "object" },
+          "card_check": { "type": "object" }
+        }
+      }
+    },
+    {
+      "name": "challenge",
+      "title": "Fresh challenge",
+      "endpoint": "/challenge",
+      "description": "Returns {challenge, expires_at}: a single-use token, valid two minutes, that every attest and mail_start call must sign.",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "attest",
+      "title": "Check raw material and sign proofs",
+      "endpoint": "/attest",
+      "description": "Wallet only. Checks one piece of raw material against the verifier's trust anchors and returns {proofs: [{attr, value, method, source, label, proof}]}. Kinds: oidc_id_token {provider, id_token, reattest?}; github {access_token}; mail_code {email, code, mail_token}; card_check {check_id, line1, postal_code, country}; proof {proof} (rebind a proof to the calling device). The holder key and the device key both sign canonical JSON {op: \"attest\", kind, material: base64url(SHA-256(canonical material)), challenge}; a WIA bound to the device key is required.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["kind", "material", "holder", "device", "wia", "challenge"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["oidc_id_token", "github", "mail_code", "card_check", "proof"] },
+          "material": { "type": "object" },
+          "holder": { "type": "object", "description": "{hk_pub, salt, sig}, base64url: SEC1 holder key, 16-byte salt, raw ES256 signature." },
+          "device": { "type": "object", "description": "{pub, sig}, base64url: SEC1 device key, raw ES256 signature." },
+          "wia": { "type": "string" },
+          "challenge": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "mail_start",
+      "title": "Mail a verification code",
+      "endpoint": "/mail/start",
+      "description": "Wallet only. Mails a six-digit code to the address and returns {mail_token, expires_at}. Both keys sign canonical JSON {op: \"mail_start\", email, challenge}. Redeem with attest kind mail_code.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["email", "holder", "device", "wia", "challenge"],
+        "properties": {
+          "email": { "type": "string" },
+          "holder": { "type": "object" },
+          "device": { "type": "object" },
+          "wia": { "type": "string" },
+          "challenge": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "disclose",
+      "title": "Disclose a proof to one app",
+      "endpoint": "/disclose",
+      "description": "Wallet only. Returns {token}: a short-lived SD-JWT VC of one proof, addressed to rp_id and bound to the device key. The device key signs canonical JSON {op: \"disclose\", proof: <proof jti>, rp_id, sub, nonce, ts}.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["proof", "rp_id", "sub", "nonce", "ts", "device", "wia"],
+        "properties": {
+          "proof": { "type": "string" },
+          "rp_id": { "type": "string" },
+          "sub": { "type": "string" },
+          "nonce": { "type": "string" },
+          "ts": { "type": "integer" },
+          "device": { "type": "object" },
+          "wia": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "status",
+      "role": "status",
+      "title": "Status",
+      "endpoint": "/status",
+      "description": "Providers configured, whether mail and card checks are available, whether WIA is enforced, and the provider-key ledger's root.",
+      "inputSchema": { "type": "object", "properties": {} }
+    }
+  ]
+}
