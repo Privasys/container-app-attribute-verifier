@@ -70,12 +70,15 @@ func (cc *CardChecks) Check(ctx context.Context, m CardMaterial, commitment stri
 		return nil, errors.New("card check: check_id is required")
 	}
 	var a verifyAnswer
-	status, err := cc.post(ctx, "/api/v1/internal/address-checks/verify", m, &a)
+	status, err := cc.post(ctx, "/api/v1/platform/address-checks/verify", m, &a)
 	if err != nil {
 		return nil, err
 	}
-	if status == http.StatusNotFound || a.Error == "expired" || a.Error == "revoked" {
+	if status == http.StatusNotFound || status == http.StatusGone || a.Error == "not_found" || a.Error == "expired" || a.Error == "revoked" {
 		return nil, ErrNoCheck
+	}
+	if status == http.StatusTooManyRequests {
+		return nil, errors.New("card check: too many lookups of this check; try again later")
 	}
 	if status != http.StatusOK {
 		return nil, fmt.Errorf("card check: the back office answered %d", status)
@@ -128,7 +131,7 @@ func (cc *CardChecks) Check(ctx context.Context, m CardMaterial, commitment stri
 
 // Statement records the hash of a proof the verifier signed for a check.
 func (cc *CardChecks) Statement(ctx context.Context, checkID, sha256b64 string) error {
-	status, err := cc.post(ctx, "/api/v1/internal/address-checks/"+url.PathEscape(checkID)+"/statement",
+	status, err := cc.post(ctx, "/api/v1/platform/address-checks/"+url.PathEscape(checkID)+"/statement",
 		map[string]string{"sha256": sha256b64}, nil)
 	if err != nil {
 		return err
