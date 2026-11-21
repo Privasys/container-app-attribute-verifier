@@ -392,16 +392,24 @@ func TestMailResendIsLimited(t *testing.T) {
 	}
 }
 
-func TestCardCheckSignsOnlyPassedFields(t *testing.T) {
+func TestCardCheckSignsOnlyAFullMatch(t *testing.T) {
 	h := newHarness(t)
 	w := newWallet(t, h.wp)
 	visa, gb := "visa", "GB"
+	material := map[string]any{"check_id": "chk1", "line1": "1 High St", "postal_code": "SW1A 1AA", "country": "GB"}
+	// The postcode alone passing (a previous address with the same digits
+	// does) signs nothing.
 	h.officeAnswer = map[string]any{"match": true, "checks": map[string]string{"line1": "fail", "postal_code": "pass"},
 		"card_brand": visa, "card_country": gb, "checked_at": "2025-11-21T05:20:00Z", "holder_binding": w.commitment()}
-	out := h.attest(w, "card_check", map[string]any{"check_id": "chk1", "line1": "1 High St", "postal_code": "SW1A 1AA", "country": "GB"}, 200)
+	h.attest(w, "card_check", material, 422)
+	if len(h.statements) != 0 {
+		t.Fatal("a statement was recorded for an unsigned check")
+	}
+	h.officeAnswer["checks"] = map[string]string{"line1": "pass", "postal_code": "pass"}
+	out := h.attest(w, "card_check", material, 200)
 	p := proofsOf(t, out)["address"]
 	val := p["value"].(map[string]any)
-	if val["postal_code"] != "SW1A 1AA" || val["street_address"] != nil {
+	if val["postal_code"] != "SW1A 1AA" || val["street_address"] != "1 High St" {
 		t.Fatalf("address value: %v", val)
 	}
 	if p["source"] != "card_bank" || p["label"].(map[string]any)["brand"] != "visa" {
@@ -411,16 +419,18 @@ func TestCardCheckSignsOnlyPassedFields(t *testing.T) {
 	if pr.MaterialAt != 1763702400 {
 		t.Fatal("the proof does not carry the original check time")
 	}
+	if pr.Evidence["scope"] != "billing_address" {
+		t.Fatal("the proof does not say it is a billing address")
+	}
 	if len(h.statements) != 1 {
 		t.Fatal("no statement recorded at the back office")
 	}
 	// A check started by another holder is refused; a withdrawn one too.
 	other := newWallet(t, h.wp)
-	h.attest(other, "card_check", map[string]any{"check_id": "chk1", "line1": "1 High St", "postal_code": "SW1A 1AA"}, 422)
+	h.attest(other, "card_check", material, 422)
 	h.officeAnswer = map[string]any{"error": "revoked"}
-	h.attest(w, "card_check", map[string]any{"check_id": "chk1", "line1": "1 High St", "postal_code": "SW1A 1AA"}, 404)
+	h.attest(w, "card_check", material, 404)
 }
-
 func TestRebindToNewDeviceThenDisclose(t *testing.T) {
 	h := newHarness(t)
 	phone := newWallet(t, h.wp)
@@ -569,7 +579,7 @@ func TestMailStartWithoutDeviceSignature(t *testing.T) {
 func TestCardCheckWithoutTimeSignsNothing(t *testing.T) {
 	h := newHarness(t)
 	w := newWallet(t, h.wp)
-	h.officeAnswer = map[string]any{"match": true, "checks": map[string]string{"postal_code": "pass"},
+	h.officeAnswer = map[string]any{"match": true, "checks": map[string]string{"line1": "pass", "postal_code": "pass"},
 		"holder_binding": w.commitment()}
 	h.attest(w, "card_check", map[string]any{"check_id": "c2", "line1": "1 High St", "postal_code": "SW1A 1AA"}, 422)
 	h.officeAnswer["checked_at"] = 1763700000

@@ -42,6 +42,10 @@ type CardChecks struct {
 // expired, or withdrawn by the holder. Nothing is signed.
 var ErrNoCheck = errors.New("card check: no such check, or it was withdrawn")
 
+// ErrPartialMatch means the bank did not confirm both the street line and
+// the postcode. Nothing is signed.
+var ErrPartialMatch = errors.New("card check: the bank did not confirm both the street line and the postcode")
+
 // CardMaterial is what the wallet received from the check.
 type CardMaterial struct {
 	CheckID    string `json:"check_id"`
@@ -95,16 +99,17 @@ func (cc *CardChecks) Check(ctx context.Context, m CardMaterial, commitment stri
 	if a.HolderBinding == "" || !holder.Equal(a.HolderBinding, commitment) {
 		return nil, errors.New("card check: the check was not started by this holder")
 	}
-	value := map[string]any{}
-	if a.Checks["line1"] == "pass" && strings.TrimSpace(m.Line1) != "" {
-		value["street_address"] = m.Line1
+	// Only a full match is signed: the bank confirmed both the street line
+	// and the postcode. Card address checks are loose (UK banks compare the
+	// house number and the postcode digits only), so one field on its own
+	// proves very little: a previous address with the same digits passes.
+	// And what passes is the billing address the bank holds, not where the
+	// holder lives now; the proof says so.
+	if a.Checks["line1"] != "pass" || a.Checks["postal_code"] != "pass" ||
+		strings.TrimSpace(m.Line1) == "" || strings.TrimSpace(m.PostalCode) == "" {
+		return nil, ErrPartialMatch
 	}
-	if a.Checks["postal_code"] == "pass" && strings.TrimSpace(m.PostalCode) != "" {
-		value["postal_code"] = m.PostalCode
-	}
-	if len(value) == 0 {
-		return nil, errors.New("card check: no field of the address passed")
-	}
+	value := map[string]any{"street_address": m.Line1, "postal_code": m.PostalCode}
 	// The label is data; the wallet writes the sentence ("Confirmed by a
 	// UK Visa card's bank", or "Confirmed by your card's bank" when the
 	// brand or country is unknown). The typed country is context only:
@@ -128,7 +133,11 @@ func (cc *CardChecks) Check(ctx context.Context, m CardMaterial, commitment stri
 		MaterialAt: checkedAt,
 		Label:      label,
 		Evidence: map[string]any{
-			"kind":       "card_check",
+			"kind": "card_check",
+			// What the bank compared, so a reader does not take more from the
+			// proof than it holds.
+			"scope":      "billing_address",
+			"match":      "issuer_avs",
 			"check_id":   m.CheckID,
 			"checks":     checks,
 			"checked_at": checkedAt.Unix(),

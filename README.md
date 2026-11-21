@@ -31,8 +31,8 @@ the same material to be checked again at any time.
 | `holder` | a commitment to the holder's key, and the hash of one device's hardware key |
 | `measurement` | the image digest of the build that signed it |
 
-Only fields that passed are signed. An address a provider has not verified,
-or a part of a billing address the card's bank did not confirm, is left out.
+Only what passed is signed. An address a provider has not verified, or a
+billing address the card's bank did not fully confirm, is left out.
 
 ## Rules per source
 
@@ -52,7 +52,11 @@ or a part of a billing address the card's bank did not confirm, is left out.
   wrong tries.
 - **Card check**: the verifier asks the Privasys back office whether the
   check exists, was started by this holder and matches these fields, and
-  signs the fields whose check passed, with the original check time.
+  signs the address only when the card's bank confirmed both the street line
+  and the postcode, with the original check time. Card address checks are
+  loose (UK banks compare the house number and the postcode digits only),
+  and what they confirm is the billing address the bank holds, not where
+  the holder lives now: the proof says `scope: billing_address`.
 
 ## Binding to the holder
 
