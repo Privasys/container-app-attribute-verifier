@@ -422,7 +422,7 @@ func TestCardCheckSignsOnlyAFullMatch(t *testing.T) {
 	if pr.Evidence["scope"] != "billing_address" {
 		t.Fatal("the proof does not say it is a billing address")
 	}
-	if len(h.statements) != 1 {
+	if len(h.statements) != 2 { // the address and the billing country
 		t.Fatal("no statement recorded at the back office")
 	}
 	// A check started by another holder is refused; a withdrawn one too.
@@ -587,5 +587,25 @@ func TestCardCheckWithoutTimeSignsNothing(t *testing.T) {
 	pr, _ := proof.Verify(h.srv.o.Signer, proofsOf(t, out)["address"]["proof"].(string))
 	if pr.MaterialAt != 1763700000 {
 		t.Fatal("Unix-seconds check time not read")
+	}
+}
+
+// The billing country is its own proof (ISO 3166-1 alpha-2), issued only on a
+// full match and when the issuing country of the card is the typed one.
+func TestCardCheckBillingCountry(t *testing.T) {
+	h := newHarness(t)
+	w := newWallet(t, h.wp)
+	full := map[string]string{"line1": "pass", "postal_code": "pass"}
+	h.officeAnswer = map[string]any{"match": true, "checks": full, "card_brand": "visa", "card_country": "GB",
+		"checked_at": "2026-11-22T00:10:00Z", "holder_binding": w.commitment()}
+	out := proofsOf(t, h.attest(w, "card_check", map[string]any{"check_id": "c3", "line1": "1 High St", "postal_code": "SW1A 1AA", "country": "gb"}, 200))
+	if out["billing_country"]["value"] != "GB" || out["address"] == nil {
+		t.Fatalf("billing_country: %v", out["billing_country"])
+	}
+	// A French card confirming an address typed as GB: no country claim.
+	h.officeAnswer["card_country"] = "FR"
+	out = proofsOf(t, h.attest(w, "card_check", map[string]any{"check_id": "c3", "line1": "1 High St", "postal_code": "SW1A 1AA", "country": "GB"}, 200))
+	if out["billing_country"] != nil {
+		t.Fatal("a country was claimed although the card country differs")
 	}
 }

@@ -124,12 +124,21 @@ func (cc *CardChecks) Check(ctx context.Context, m CardMaterial, commitment stri
 	if m.Country != "" {
 		label["address_country"] = m.Country
 	}
+	values := []Value{{Attr: "address", Value: value}}
+	// The billing country, as its own proof, so it can be shared without the
+	// address. Banks do not compare the country, so it is claimed only when
+	// the bank fully confirmed an address the holder typed in the same
+	// country as the card was issued: a UK card confirming a UK address
+	// says GB. ISO 3166-1 alpha-2, as card networks give it.
+	if bc, ok := billingCountry(a.CardCountry, m.Country); ok {
+		values = append(values, Value{Attr: "billing_country", Value: bc})
+	}
 	checks := map[string]string{}
 	for k, v := range a.Checks {
 		checks[k] = v
 	}
 	return &Result{Source: "card_bank", Method: "proven",
-		Values:     []Value{{Attr: "address", Value: value}},
+		Values:     values,
 		MaterialAt: checkedAt,
 		Label:      label,
 		Evidence: map[string]any{
@@ -201,4 +210,17 @@ func parseCheckedAt(raw json.RawMessage) (time.Time, bool) {
 		return time.Unix(n, 0), true
 	}
 	return time.Time{}, false
+}
+
+// billingCountry returns the ISO 3166-1 alpha-2 code when the issuing
+// country of the card and the typed country agree.
+func billingCountry(card *string, typed string) (string, bool) {
+	if card == nil {
+		return "", false
+	}
+	c, t := strings.ToUpper(strings.TrimSpace(*card)), strings.ToUpper(strings.TrimSpace(typed))
+	if len(c) != 2 || c != t || c[0] < 'A' || c[0] > 'Z' || c[1] < 'A' || c[1] > 'Z' {
+		return "", false
+	}
+	return c, true
 }
