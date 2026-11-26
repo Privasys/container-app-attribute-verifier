@@ -48,14 +48,17 @@ type Options struct {
 	Measurement string
 	// Issuer, when set, is the verifier's public origin; otherwise it is
 	// taken from the request's Host.
-	Issuer   string
-	Signer   *keys.Signer
-	Archive  *archive.Archive
-	Manager  *platform.Manager
-	MailKey  [32]byte
-	Client   *http.Client
-	Manifest []byte
-	Now      func() time.Time
+	Issuer  string
+	Signer  *keys.Signer
+	Archive *archive.Archive
+	Manager *platform.Manager
+	// KeyAttestation publishes the signing key's digest at
+	// platform.OIDSigningKey; Signer.Gate refuses to sign until it has.
+	KeyAttestation *platform.KeyAttestation
+	MailKey        [32]byte
+	Client         *http.Client
+	Manifest       []byte
+	Now            func() time.Time
 	// RequireWIA is baked into the image as true; tests turn it off.
 	RequireWIA bool
 	// NoBackgroundRefresh stops configure from fetching key sets on its own
@@ -150,6 +153,11 @@ func (s *Server) Resume(ctx context.Context) {
 	if !s.Configured() {
 		return
 	}
+	// Not best-effort in effect: on failure the signing gate stays closed and
+	// retries the publish at the next signature.
+	if err := s.o.KeyAttestation.Publish(ctx); err != nil {
+		log.Printf("attribute-verifier: signing-key OID publish failed, signing stays closed: %v", err)
+	}
 	s.publishConfig(ctx)
 	s.o.Archive.Republish()
 	if err := s.o.Manager.ConfigComplete(ctx); err != nil {
@@ -204,12 +212,27 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /evidence/keys/{source}/{kid}", s.gated(s.evidenceKey))
 	mux.HandleFunc("GET /ledger/root", s.gated(s.ledgerRoot))
 	mux.HandleFunc("POST /ledger/root", s.gated(s.ledgerRoot))
-	mux.HandleFunc("POST /status", s.gated(s.status))
-	mux.HandleFunc("GET /status", s.gated(s.status))
+	// Status signs nothing, so it answers even while signing is closed.
+	mux.HandleFunc("POST /status", s.configuredOnly(s.status))
+	mux.HandleFunc("GET /status", s.configuredOnly(s.status))
+	mux.HandleFunc("GET /signing-key/status", s.signingKeyStatus)
 	return mux
 }
 
+// gated admits a route once configured AND once the signing key is attested:
+// every gated route signs. Signer.Gate refuses the signature itself either
+// way; this check answers 503 before any work is done.
 func (s *Server) gated(h http.HandlerFunc) http.HandlerFunc {
+	return s.configuredOnly(func(w http.ResponseWriter, r *http.Request) {
+		if err := s.o.KeyAttestation.Require(); err != nil {
+			writeError(w, http.StatusServiceUnavailable, platform.ErrKeyNotAttested.Error())
+			return
+		}
+		h(w, r)
+	})
+}
+
+func (s *Server) configuredOnly(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.Configured() {
 			writeError(w, http.StatusServiceUnavailable, "app is awaiting initial configuration")
@@ -217,6 +240,17 @@ func (s *Server) gated(h http.HandlerFunc) http.HandlerFunc {
 		}
 		h(w, r)
 	}
+}
+
+// signingKeyStatus says what the certificate should attest at
+// platform.OIDSigningKey, for an auditor to compare against the leaf.
+func (s *Server) signingKeyStatus(w http.ResponseWriter, r *http.Request) {
+	d, err := s.o.Signer.SPKISHA256()
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"digest": fmt.Sprintf("%x", d), "kid": s.o.Signer.Kid, "oid": platform.OIDSigningKey})
 }
 
 func (s *Server) issuer(r *http.Request) string {
@@ -259,6 +293,12 @@ func (s *Server) configure(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.apply(next); err != nil {
 		writeError(w, 400, err.Error())
+		return
+	}
+	// Before the gate lifts: no proof is issued by a verifier whose
+	// certificate does not attest the key that signs it.
+	if err := s.o.KeyAttestation.Publish(r.Context()); err != nil {
+		writeError(w, http.StatusServiceUnavailable, "the signing key could not be attested: "+err.Error())
 		return
 	}
 	s.publishConfig(r.Context())

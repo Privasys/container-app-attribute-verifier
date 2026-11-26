@@ -30,6 +30,20 @@ type Signer struct {
 	Key *ecdsa.PrivateKey
 	// Kid is base64url(SHA-256(SPKI DER)).
 	Kid string
+	// Gate runs before EVERY signature; an error refuses it. On the platform
+	// it requires the key's digest in the attested leaf (fail closed).
+	Gate func() error
+}
+
+// SPKISHA256 is SHA-256 of the public key's SubjectPublicKeyInfo (DER): the
+// value attested at platform.OIDSigningKey, of which Kid is the encoding.
+func (s *Signer) SPKISHA256() ([]byte, error) {
+	der, err := x509.MarshalPKIXPublicKey(&s.Key.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	h := sha256.Sum256(der)
+	return h[:], nil
 }
 
 // Public is the public JWK, with kid, use and alg.
@@ -41,6 +55,11 @@ func (s *Signer) Public() jose.JWK {
 
 // Sign signs payload as a compact JWS of type typ.
 func (s *Signer) Sign(typ string, payload any) (string, error) {
+	if s.Gate != nil {
+		if err := s.Gate(); err != nil {
+			return "", err
+		}
+	}
 	return jose.Sign(s.Key, s.Kid, typ, payload)
 }
 

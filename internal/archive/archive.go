@@ -34,6 +34,7 @@ import (
 
 	"github.com/Privasys/container-app-attribute-verifier/internal/jose"
 	"github.com/Privasys/container-app-attribute-verifier/internal/keys"
+	"github.com/Privasys/container-app-attribute-verifier/internal/platform"
 )
 
 // RecordTyp is the JOSE typ of a signed key record.
@@ -102,9 +103,23 @@ func Open(backend ledger.Backend, ck [32]byte, signer *keys.Signer, measurement 
 	a := &Archive{signer: signer, measurement: measurement, client: client, now: now, pub: pub,
 		store: store, sources: map[string]Source{}, fetched: map[string]time.Time{}}
 	if err := a.recordVersion(); err != nil {
-		return nil, err
+		// The signing key is not attested yet (platform.KeyAttestation
+		// refused the signature). The verifier still starts and answers 503
+		// on signing routes; the record is written by RecordVersion once the
+		// key's first publish succeeds.
+		if !errors.Is(err, platform.ErrKeyNotAttested) {
+			return nil, err
+		}
+		log.Printf("attribute-verifier: version record deferred until the signing key is attested: %v", err)
 	}
 	return a, nil
+}
+
+// RecordVersion writes this build's version record if it is not in the
+// ledger yet. Idempotent: it is called again on the key's first successful
+// attestation, after a deferred Open.
+func (a *Archive) RecordVersion() error {
+	return a.recordVersion()
 }
 
 // SetSources replaces the key sets the archive refreshes.

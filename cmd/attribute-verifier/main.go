@@ -55,6 +55,14 @@ func main() {
 	}
 	mgr := platform.NewManager(env("PRIVASYS_MANAGER_URL", "http://127.0.0.1:9443"),
 		os.Getenv("PRIVASYS_CONTAINER_NAME"), os.Getenv("PRIVASYS_CONTAINER_TOKEN"))
+	// Fail closed: the key signs nothing, from here on and including the
+	// ledger opened below, until its digest is in the attested leaf.
+	spki, err := signer.SPKISHA256()
+	if err != nil {
+		log.Fatalf("signing key: %v", err)
+	}
+	keyAtt := platform.NewKeyAttestation(mgr, spki, platform.OnPlatform(os.Getenv))
+	signer.Gate = keyAtt.Require
 
 	backend, err := pebblebackend.Open(filepath.Join(dataDir, "key-ledger"), nil)
 	if err != nil {
@@ -66,16 +74,28 @@ func main() {
 	if mgr != nil {
 		pub = mgr
 	}
+	// Open writes this build's version record, which needs a signature. If
+	// the key is not attested yet the record is deferred, the verifier still
+	// starts (signing routes answer 503), and it is written on the first
+	// successful publish. The runtime does not restart a dead process, so
+	// stopping here would leave the verifier down until a redeploy.
 	arch, err := archive.Open(backend, ck, signer, measurement, client, pub, time.Now)
 	if err != nil {
 		log.Fatalf("key ledger: %v", err)
 	}
+	keyAtt.OnAttested(func() {
+		if err := arch.RecordVersion(); err != nil {
+			log.Printf("attribute-verifier: version record after attestation: %v", err)
+			return
+		}
+		log.Printf("attribute-verifier: signing key attested; version record written")
+	})
 
 	manifest, _ := os.ReadFile(env("ATTRIBUTE_VERIFIER_MANIFEST", "/privasys.json"))
 	server.Version = version
 	srv, err := server.New(server.Options{
 		DataDir: dataDir, Measurement: measurement, Issuer: os.Getenv("ATTRIBUTE_VERIFIER_ISSUER"),
-		Signer: signer, Archive: arch, Manager: mgr, MailKey: mailKey, Client: client,
+		Signer: signer, Archive: arch, Manager: mgr, KeyAttestation: keyAtt, MailKey: mailKey, Client: client,
 		Manifest: manifest, Now: time.Now,
 		// Enforced in the measured image. There is deliberately no owner
 		// environment channel on the platform, so a deployed verifier

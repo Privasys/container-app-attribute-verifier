@@ -92,13 +92,27 @@ so it can be checked years later with no access to the verifier. Each
 build that opens the ledger records itself and the state it found, so the
 chain of builds and keys is continuous across upgrades.
 
+A build writes its version record with its signing key, and the key signs
+nothing until its digest is attested (see below). When the key is not yet
+attested at start-up, the version record is written as soon as it is. A
+ledger record signed in that same moment can therefore land just before the
+build's version record. Match records to builds by the signing key (`kid`),
+not by their order in the ledger.
+
 ## Attestation
 
 | OID | value |
 |---|---|
-| `1.3.6.1.4.1.65230.3.2` | the image digest (set by the platform) |
+| `1.3.6.1.4.1.65230.4.1` | the app id (set by the platform) |
+| `1.3.6.1.4.1.65230.4.2` | the image digest (set by the platform) |
 | `1.3.6.1.4.1.65230.5.4.1` | SHA-256 of the configuration in force, secrets excluded |
 | `1.3.6.1.4.1.65230.5.4.2` | the provider-key ledger's root |
+| `1.3.6.1.4.1.65230.5.4.3` | SHA-256 of the signing key's SubjectPublicKeyInfo (DER); the `kid` is its base64url |
+
+The `5.4.x` values are set by the app itself. A relying party trusts the
+signing key only after checking, on the same certificate, `4.1` (this app)
+and `4.2` (a published release) as well as `5.4.3`. Until its digest is
+attested the key signs nothing, and the routes that sign answer 503.
 
 ## API
 
