@@ -47,7 +47,11 @@ billing address the card's bank did not fully confirm, is left out.
 - **GitHub**: the verifier calls `api.github.com` itself and records the
   primary address only if GitHub marks it verified. That address is
   `proven` (GitHub's verified flag counts as verified, as Google's
-  `email_verified` does); name and picture are `observed`.
+  `email_verified` does) only when GitHub confirms the access token was
+  issued to privasys.id's own GitHub app (configured as `github`); a token
+  from any other app leaves it `observed`. Name and picture are always
+  `observed`. Like any provider's flag, it records that the address was
+  confirmed when GitHub checked it, not that it is still held today.
 - **Mail code**: the verifier mails the code and checks it; the pending
   code is sealed in a token only the enclave can open, and dies after five
   wrong tries.

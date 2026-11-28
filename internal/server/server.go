@@ -327,6 +327,7 @@ func (s *Server) statusBody(out map[string]any) map[string]any {
 	out["providers"] = names
 	out["mail"] = s.mailCodes.Sender != nil
 	out["card_check"] = s.cards != nil
+	out["github_app"] = s.cfg != nil && s.cfg.GitHub != nil
 	out["require_wia"] = s.o.RequireWIA
 	if root, err := s.o.Archive.CurrentRoot(); err == nil {
 		out["ledger"] = root
@@ -492,7 +493,10 @@ func (s *Server) attest(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, "material: "+err.Error())
 			return
 		}
-		res, checkErr = sources.CheckGitHub(ctx, s.o.Client, m.AccessToken, s.o.Now())
+		s.mu.RLock()
+		app := s.cfg.GitHub
+		s.mu.RUnlock()
+		res, checkErr = sources.CheckGitHub(ctx, s.o.Client, app, m.AccessToken, s.o.Now())
 	case "mail_code":
 		var m struct {
 			Email     string `json:"email"`

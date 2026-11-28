@@ -28,6 +28,9 @@ type Config struct {
 	Providers map[string]*sources.Provider `json:"providers,omitempty"`
 	Mail      *mail.Settings               `json:"mail,omitempty"`
 	CardCheck *CardCheckConfig             `json:"card_check,omitempty"`
+	// GitHub is privasys.id's GitHub app (IDP_GITHUB_CLIENT_ID and
+	// _SECRET): a GitHub email is proven only for a token issued to it.
+	GitHub *sources.GitHubApp `json:"github,omitempty"`
 }
 
 // CardCheckConfig names the back office.
@@ -106,6 +109,17 @@ func (c *Config) merge(in *Config) (*Config, error) {
 		}
 		out.CardCheck = in.CardCheck
 	}
+	if in.GitHub != nil {
+		held := sources.GitHubApp{}
+		if c.GitHub != nil {
+			held = *c.GitHub
+		}
+		a := in.GitHub.Merge(held)
+		if err := a.Validate(); err != nil {
+			return nil, err
+		}
+		out.GitHub = &a
+	}
 	if _, err := out.providers(); err != nil {
 		return nil, err
 	}
@@ -154,6 +168,10 @@ func (c *Config) digest() ([]byte, error) {
 	if c.Mail != nil {
 		m := c.Mail.Public()
 		pub.Mail = &m
+	}
+	if c.GitHub != nil {
+		a := c.GitHub.Public()
+		pub.GitHub = &a
 	}
 	// Canonical sorts map keys, so the provider order is stable.
 	b, err := jose.Canonical(pub)

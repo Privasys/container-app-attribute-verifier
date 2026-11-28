@@ -29,6 +29,10 @@
         "card_check": {
           "type": "object",
           "description": "The Privasys back office that answers about card checks: {base_url}. The verifier authenticates with its attested app identity; nothing is configured for that."
+        },
+        "github": {
+          "type": "object",
+          "description": "privasys.id's GitHub app: {client_id, client_secret}. A GitHub primary verified email is signed proven only when GitHub confirms the access token was issued to this app; without it, or for any other app's token, the email stays observed. The secret stays on the sealed volume and is excluded from the attested digest; it is kept when a later call gives the same client_id without it."
         }
       }
     }
@@ -39,7 +43,7 @@
       "role": "config",
       "title": "Load wallet-provider keys, providers, mail sender and back office",
       "endpoint": "/configure",
-      "description": "See configure. Returns {status: \"configured\", configuration_digest, providers, mail, card_check, ledger}.",
+      "description": "See configure. Returns {status: \"configured\", configuration_digest, providers, mail, card_check, github_app, ledger}.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -53,6 +57,9 @@
             "type": "object"
           },
           "card_check": {
+            "type": "object"
+          },
+          "github": {
             "type": "object"
           }
         }
