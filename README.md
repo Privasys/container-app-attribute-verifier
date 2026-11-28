@@ -23,7 +23,7 @@ the same material to be checked again at any time.
 | field | meaning |
 |---|---|
 | `attr`, `value` | the attribute and its value |
-| `method` | `proven`: the verifier checked cryptographic or back-office evidence. `observed`: the verifier saw it itself, over TLS, from inside the enclave |
+| `method` | `proven`: the verifier checked cryptographic or back-office evidence, or read the provider's own verified verdict from its API (GitHub's primary verified email). `observed`: the verifier saw it itself, over TLS, from inside the enclave, and nobody vouches for it (a GitHub name or picture) |
 | `source` | who vouches: `google`, `microsoft`, `linkedin`, `oidc:<issuer>`, `github`, `privasys_mail`, `card_bank` |
 | `label` | display data, e.g. the card's brand and country |
 | `material_at` | when the source asserted the value; never the time of a later re-check |
@@ -45,8 +45,9 @@ billing address the card's bank did not fully confirm, is left out.
 - **LinkedIn and other OIDC providers**: the same pattern from their
   definition.
 - **GitHub**: the verifier calls `api.github.com` itself and records the
-  primary address only if GitHub marks it verified. The result is
-  `observed`.
+  primary address only if GitHub marks it verified. That address is
+  `proven` (GitHub's verified flag counts as verified, as Google's
+  `email_verified` does); name and picture are `observed`.
 - **Mail code**: the verifier mails the code and checks it; the pending
   code is sealed in a token only the enclave can open, and dies after five
   wrong tries.

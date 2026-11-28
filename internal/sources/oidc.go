@@ -93,10 +93,12 @@ func (p *Provider) Validate() error {
 	return nil
 }
 
-// Value is one attribute a piece of material proves.
+// Value is one attribute a piece of material proves. Method, when set,
+// replaces the Result's method for this value alone.
 type Value struct {
-	Attr  string
-	Value any
+	Attr   string
+	Value  any
+	Method string
 }
 
 // Result is what checking a piece of material establishes.

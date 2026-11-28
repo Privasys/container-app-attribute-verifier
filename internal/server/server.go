@@ -560,9 +560,13 @@ func (s *Server) attest(w http.ResponseWriter, r *http.Request) {
 		proofs = append(proofs, p)
 	} else {
 		for _, v := range res.Values {
+			method := res.Method
+			if v.Method != "" {
+				method = v.Method
+			}
 			proofs = append(proofs, proof.Proof{
 				JTI: proof.NewJTI(), Iss: s.issuer(r), Iat: now.Unix(),
-				Attr: v.Attr, Value: v.Value, Method: res.Method, Source: res.Source, Label: res.Label,
+				Attr: v.Attr, Value: v.Value, Method: method, Source: res.Source, Label: res.Label,
 				MaterialAt: res.MaterialAt.Unix(), Evidence: res.Evidence, Holder: bind,
 				Measurement: s.o.Measurement,
 			})

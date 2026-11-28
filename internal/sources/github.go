@@ -20,8 +20,13 @@ import (
 // GitHub has no ID token, so nothing it says is signed. The verifier asks
 // GitHub's API itself, over TLS, from inside the enclave, with the access
 // token privasys.id obtained at sign-in, and records what it observed.
-// The token is used once and dropped. The result is "observed": it cannot
-// be replayed from material later, only rebound from the proof.
+// The token is used once and dropped, so no GitHub proof can be replayed
+// from material later, only rebound from the proof.
+//
+// The primary address GitHub marks verified is "proven": GitHub checked
+// it, the verifier read that verdict from GitHub itself, and the flag
+// counts as verified, as Google's email_verified does. Name and picture
+// are what the account says about itself: "observed".
 
 // GitHubAPI is GitHub's API origin; a test may point it elsewhere.
 var GitHubAPI = "https://api.github.com"
@@ -58,7 +63,7 @@ func CheckGitHub(ctx context.Context, client *http.Client, accessToken string, n
 	// when verified: that is the address the account answers to.
 	for _, e := range emails {
 		if e.Primary && e.Verified && e.Email != "" {
-			values = append(values, Value{Attr: "email", Value: strings.ToLower(e.Email)})
+			values = append(values, Value{Attr: "email", Value: strings.ToLower(e.Email), Method: "proven"})
 			break
 		}
 	}

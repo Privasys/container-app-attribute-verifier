@@ -35,7 +35,9 @@ const (
 
 // Methods: the only two.
 const (
-	// Proven: the verifier checked cryptographic or back-office evidence.
+	// Proven: the verifier checked cryptographic or back-office evidence,
+	// or read the provider's own verified verdict from its API (GitHub's
+	// primary verified email).
 	Proven = "proven"
 	// Observed: the verifier saw it itself, over TLS, from inside the
 	// enclave. It cannot be replayed later from raw material.
