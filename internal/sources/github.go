@@ -49,6 +49,9 @@ func (a GitHubApp) Validate() error {
 	if a.ClientID == "" || a.ClientSecret == "" {
 		return errors.New("github: client_id and client_secret are both needed")
 	}
+	if a.ClientID[0] == '.' {
+		return errors.New("github: client_id cannot start with a dot")
+	}
 	for _, c := range a.ClientID {
 		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == '-') {
 			return errors.New("github: client_id has a character GitHub ids never have")

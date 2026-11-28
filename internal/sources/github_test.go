@@ -153,7 +153,7 @@ func TestGitHubAppConfig(t *testing.T) {
 	if held.Public().ClientSecret != "" {
 		t.Fatal("Public must drop the secret")
 	}
-	for _, id := range []string{"", "a/b", "a?b", "a b"} {
+	for _, id := range []string{"", "a/b", "a?b", "a b", ".", "..", ".x"} {
 		if (GitHubApp{ClientID: id, ClientSecret: "x"}).Validate() == nil {
 			t.Fatalf("client_id %q accepted", id)
 		}
